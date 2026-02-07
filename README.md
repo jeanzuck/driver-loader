@@ -7,7 +7,8 @@ A simple Windows batch tool to load and unload a kernel-mode driver using the Se
 - Self-elevates to Administrator when needed.
 - Loads a driver by creating a kernel service with `sc create` and `sc start`.
 - Unloads a driver by `sc stop` and `sc delete`.
-- Status display (loaded/unloaded) in the menu.
+- Status display for service (loaded/unloaded) and state (running/stopped).
+- Separate actions for load, start, stop, unload, and combined flows.
 - Uses the script name as the service name and `<scriptname>.sys` as the driver file.
 
 ## Requirements
@@ -32,12 +33,17 @@ A simple Windows batch tool to load and unload a kernel-mode driver using the Se
 2. Run the script:
    - Double-click it, or run from an elevated terminal.
 3. Choose an option:
-   - `1` to load the driver
-   - `2` to unload the driver
-   - `3` to exit
+   - `1` to load and start
+   - `2` to stop and unload
+   - `3` to start
+   - `4` to stop
+   - `5` to load
+   - `6` to unload
+   - `0` to exit
 
 ## Notes
 
+- If a start fails, the script rechecks the service state to avoid false errors.
 - If a load fails after service creation, the script deletes the service to avoid leftovers.
 - The driver is started on demand (`start= demand`).
 - Some drivers may require testsigning or proper signing depending on your Windows configuration.
