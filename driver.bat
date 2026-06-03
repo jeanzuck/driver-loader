@@ -11,6 +11,7 @@ setlocal enabledelayedexpansion
 set "SERVICE_NAME=%~n0"
 set "DRIVER_FILE=%SERVICE_NAME%.sys"
 set "DRIVER_PATH=%~dp0%DRIVER_FILE%"
+set "SC_LAST_LOG=%TEMP%\%SERVICE_NAME%_sc_last.log"
 :: ==================
 
 :MENU
@@ -88,14 +89,15 @@ if not defined SERVICE_EXISTS (
 
 :: Start the driver service
 echo Starting driver service "%SERVICE_NAME%"...
-sc start "%SERVICE_NAME%" >nul 2>&1
-if %errorlevel% neq 0 (
+call :RunSc sc start "%SERVICE_NAME%"
+if errorlevel 1 (
   call :WAIT_FOR_RUNNING
   if defined START_OK goto LOAD_AND_START_SUCCESS
   powershell -Command "Write-Host 'Error: Failed to start driver service.' -ForegroundColor Red"
+  call :PrintLastScOutput
   if not defined SERVICE_EXISTS (
     powershell -Command "Write-Host 'Removing failed service...' -ForegroundColor Red"
-    sc delete "%SERVICE_NAME%" >nul 2>&1
+    call :RunSc sc delete "%SERVICE_NAME%"
   )
   pause
   goto MENU
@@ -121,13 +123,18 @@ if errorlevel 1 (
 )
 
 echo Stopping driver service...
-sc stop "%SERVICE_NAME%" >nul 2>&1
+call :RunSc sc stop "%SERVICE_NAME%"
+if errorlevel 1 (
+  powershell -Command "Write-Host 'Warning: Failed to stop driver service before deleting.' -ForegroundColor Yellow"
+  call :PrintLastScOutput
+)
 timeout /t 2 >nul
 
 echo Deleting driver service...
-sc delete "%SERVICE_NAME%" >nul 2>&1
-if %errorlevel% neq 0 (
+call :RunSc sc delete "%SERVICE_NAME%"
+if errorlevel 1 (
   powershell -Command "Write-Host 'Error: Failed to delete driver service.' -ForegroundColor Red"
+  call :PrintLastScOutput
   pause
   goto MENU
 )
@@ -151,11 +158,12 @@ if errorlevel 1 (
 )
 
 echo Starting driver service...
-sc start "%SERVICE_NAME%" >nul 2>&1
-if %errorlevel% neq 0 (
+call :RunSc sc start "%SERVICE_NAME%"
+if errorlevel 1 (
   call :WAIT_FOR_RUNNING
   if defined START_OK goto START_DRIVER_SUCCESS
   powershell -Command "Write-Host 'Error: Failed to start driver service.' -ForegroundColor Red"
+  call :PrintLastScOutput
   pause
   goto MENU
 )
@@ -179,9 +187,10 @@ if errorlevel 1 (
 )
 
 echo Stopping driver service...
-sc stop "%SERVICE_NAME%" >nul 2>&1
-if %errorlevel% neq 0 (
+call :RunSc sc stop "%SERVICE_NAME%"
+if errorlevel 1 (
   powershell -Command "Write-Host 'Error: Failed to stop driver service.' -ForegroundColor Red"
+  call :PrintLastScOutput
   pause
   goto MENU
 )
@@ -243,9 +252,10 @@ if /i "%DRIVER_STATE%"=="RUNNING" (
 )
 
 echo Deleting driver service...
-sc delete "%SERVICE_NAME%" >nul 2>&1
-if %errorlevel% neq 0 (
+call :RunSc sc delete "%SERVICE_NAME%"
+if errorlevel 1 (
   powershell -Command "Write-Host 'Error: Failed to delete driver service.' -ForegroundColor Red"
+  call :PrintLastScOutput
   pause
   goto MENU
 )
@@ -279,9 +289,10 @@ powershell -Command "Write-Host 'Driver file found: %DRIVER_PATH%' -ForegroundCo
 exit /b 0
 
 :RequireServiceExists
-sc query "%SERVICE_NAME%" >nul 2>&1
+call :RunSc sc query "%SERVICE_NAME%"
 if errorlevel 1 (
   powershell -Command "Write-Host 'Driver is not loaded.' -ForegroundColor Yellow"
+  call :PrintLastScOutput
   exit /b 1
 )
 exit /b 0
@@ -294,11 +305,30 @@ exit /b 0
 
 :CreateService
 echo Creating driver service "%SERVICE_NAME%"...
-sc create "%SERVICE_NAME%" binPath= "%DRIVER_PATH%" type= kernel start= demand >"%TEMP%\driver_create.log" 2>&1
+call :RunSc sc create "%SERVICE_NAME%" binPath= "%DRIVER_PATH%" type= kernel start= demand
 if errorlevel 1 (
   powershell -Command "Write-Host 'Error: Failed to create driver service.' -ForegroundColor Red"
-  type "%TEMP%\driver_create.log"
+  call :PrintLastScOutput
   exit /b 1
+)
+exit /b 0
+
+:RunSc
+%* >"%SC_LAST_LOG%" 2>&1
+set "SC_LAST_EXIT=%ERRORLEVEL%"
+exit /b %SC_LAST_EXIT%
+
+:PrintLastScOutput
+if defined SC_LAST_EXIT powershell -Command "Write-Host 'sc exit code: %SC_LAST_EXIT%' -ForegroundColor Yellow"
+if exist "%SC_LAST_LOG%" (
+  for %%L in ("%SC_LAST_LOG%") do if %%~zL gtr 0 (
+    powershell -Command "Write-Host 'sc output:' -ForegroundColor Yellow"
+    type "%SC_LAST_LOG%"
+  ) else (
+    powershell -Command "Write-Host 'sc did not provide additional details.' -ForegroundColor Yellow"
+  )
+) else (
+  powershell -Command "Write-Host 'sc log file was not created.' -ForegroundColor Yellow"
 )
 exit /b 0
 
